@@ -1,48 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import DashboardPage from './pages/DashboardPage';
 import './App.css';
 
+// This is a component to protect our routes
+const PrivateRoute = ({ children }) => {
+  const { token } = useAuth();
+  // If there's no token, redirect to the login page
+  return token ? children : <Navigate to="/login" />;
+};
+
 function App() {
-  // 1. Create a state variable to hold the message from the backend
-  const [message, setMessage] = useState('');
-
-  // 2. useEffect hook runs after the component mounts
-  useEffect(() => {
-    // 3. Define the function to fetch data from the backend
-    const fetchData = async () => {
-      try {
-        // 4. Use the fetch API to make a GET request to your backend's root URL
-        const response = await fetch('http://localhost:8000/');
-        
-        // 5. Check if the response was successful
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-
-        // 6. Parse the JSON data from the response
-        const data = await response.json();
-        
-        // 7. Update the state with the message from the backend
-        setMessage(data.message);
-      } catch (error) {
-        // 8. If there's an error (e.g., backend is down), set an error message
-        console.error('Error fetching data:', error);
-        setMessage('Could not connect to the backend.');
-      }
-    };
-
-    // 9. Call the fetchData function
-    fetchData();
-  }, []); // The empty dependency array [] means this effect runs only once
-
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>Welcome to the Agentic LMS</h1>
-        <p>
-          {/* 10. Display the message from the backend, or a loading text */}
-          <strong>Message from Backend:</strong> {message || "Loading..."}
-        </p>
-      </header>
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+
+        {/* Protected Routes */}
+        <Route 
+          path="/dashboard" 
+          element={
+            <PrivateRoute>
+              <DashboardPage />
+            </PrivateRoute>
+          } 
+        />
+
+        {/* Default route */}
+        {/* If user is at "/", redirect to dashboard if logged in, else to login */}
+        <Route path="/" element={<Navigate to="/dashboard" />} />
+      </Routes>
     </div>
   );
 }

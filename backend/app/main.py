@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from fastapi import status, Depends
+from .api import classrooms
 from datetime import timedelta
 
 from . import models, schemas, crud, auth
@@ -30,6 +31,9 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# --- Include the new routers ---
+app.include_router(classrooms.router)
 
 
 # --- Auth Endpoints ---
@@ -75,4 +79,4 @@ def login_for_access_token(user_login: schemas.UserLogin, db: Session = Depends(
 
 @app.get("/")
 def read_root():
-    return{"message": "Hello from the A-LMS Backend!"}
+    return {"message": "Welcome to the A-LMS Backend! Auth & Classrooms are active."}

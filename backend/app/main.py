@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from fastapi import status, Depends
 from .api import classrooms
+from .api import assignments
 from datetime import timedelta
 
 from . import models, schemas, crud, auth
@@ -34,6 +35,7 @@ def get_db():
 
 # --- Include the new routers ---
 app.include_router(classrooms.router)
+app.include_router(assignments.router)
 
 
 # --- Auth Endpoints ---

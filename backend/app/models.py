@@ -1,5 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
+from sqlalchemy import Boolean, DateTime, Float, Text
+from sqlalchemy.sql import func
 from .database import Base
 import secrets # Import secrets to generate invite codes
 
@@ -47,3 +49,82 @@ class Enrollment(Base):
     
     student_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     classroom_id = Column(Integer, ForeignKey("classrooms.id"), primary_key=True)
+
+class Assignment(Base):
+    __tablename__ = "assignments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, nullable=False)
+    due_at = Column(DateTime(timezone=True), nullable=True) # For deadlines
+    assignment_type = Column(String, default="quiz") # For future (e.g., 'essay')
+    
+    # Link to the classroom
+    classroom_id = Column(Integer, ForeignKey("classrooms.id"))
+    classroom = relationship("Classroom")
+    
+    # Link to all questions
+    questions = relationship("Question", back_populates="assignment", cascade="all, delete-orphan")
+    # Link to all submissions
+    submissions = relationship("Submission", back_populates="assignment", cascade="all, delete-orphan")
+
+class Question(Base):
+    __tablename__ = "questions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    question_text = Column(Text, nullable=False)
+    # In the future: question_type (e.g., 'multiple-choice', 'short-answer')
+    
+    # Link to the assignment
+    assignment_id = Column(Integer, ForeignKey("assignments.id"))
+    assignment = relationship("Assignment", back_populates="questions")
+    
+    # Link to all options
+    options = relationship("Option", back_populates="question", cascade="all, delete-orphan")
+    # Link to all answers
+    submission_answers = relationship("SubmissionAnswer", back_populates="question")
+
+class Option(Base):
+    __tablename__ = "options"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    option_text = Column(Text, nullable=False)
+    is_correct = Column(Boolean, default=False, nullable=False)
+    
+    # Link to the question
+    question_id = Column(Integer, ForeignKey("questions.id"))
+    question = relationship("Question", back_populates="options")
+
+class Submission(Base):
+    __tablename__ = "submissions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    submitted_at = Column(DateTime(timezone=True), server_default=func.now())
+    score = Column(Float, nullable=True) # The grade (e.g., 0.8 for 80%)
+    
+    # Link to the assignment
+    assignment_id = Column(Integer, ForeignKey("assignments.id"))
+    assignment = relationship("Assignment", back_populates="submissions")
+    
+    # Link to the student
+    student_id = Column(Integer, ForeignKey("users.id"))
+    student = relationship("User")
+    
+    # Link to all answers
+    answers = relationship("SubmissionAnswer", back_populates="submission", cascade="all, delete-orphan")
+
+class SubmissionAnswer(Base):
+    __tablename__ = "submission_answers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Link to the main submission
+    submission_id = Column(Integer, ForeignKey("submissions.id"))
+    submission = relationship("Submission", back_populates="answers")
+    
+    # Link to the question being answered
+    question_id = Column(Integer, ForeignKey("questions.id"))
+    question = relationship("Question", back_populates="submission_answers")
+    
+    # Link to the specific option the student chose
+    selected_option_id = Column(Integer, ForeignKey("options.id"))
+    selected_option = relationship("Option")

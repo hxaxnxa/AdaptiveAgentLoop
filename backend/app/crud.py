@@ -5,12 +5,26 @@ from . import models, schemas, auth
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
+def get_user_by_enrollment_number(db: Session, enrollment_number: str):
+    return db.query(models.User).filter(models.User.enrollment_number == enrollment_number).first()
+
+# --- NEW: get_user_by_login_id ---
+def get_user_by_login_id(db: Session, login_id: str):
+    """Fetches a user by either their email OR their enrollment number."""
+    return db.query(models.User).filter(
+        (models.User.email == login_id) | (models.User.enrollment_number == login_id)
+    ).first()
+
 def create_user(db: Session, user: schemas.UserCreate):
     hashed_password = auth.get_password_hash(user.password)
+    is_approved = True if user.role == 'student' else False
+
     db_user = models.User(
         email=user.email, 
         hashed_password=hashed_password, 
-        role=user.role
+        role=user.role,
+        enrollment_number=user.enrollment_number,
+        is_approved=is_approved,
     )
     db.add(db_user)
     db.commit()
@@ -125,3 +139,31 @@ def get_submission(db: Session, submission_id: int, student_id: int):
         models.Submission.id == submission_id,
         models.Submission.student_id == student_id
     ).first()
+
+
+# --- ADD NEW CRUD functions for M3.5 ---
+
+def get_classroom_by_id(db: Session, classroom_id: int):
+    """Gets a classroom by its primary key ID."""
+    return db.query(models.Classroom).get(classroom_id)
+
+def is_student_enrolled(db: Session, student_id: int, classroom_id: int):
+    """Checks if a specific student is enrolled in a specific classroom."""
+    return db.query(models.Enrollment).filter(
+        models.Enrollment.student_id == student_id,
+        models.Enrollment.classroom_id == classroom_id
+    ).first() is not None
+
+def get_students_in_classroom(db: Session, classroom_id: int):
+    """Gets all User objects for students enrolled in a classroom."""
+    return db.query(models.User).join(models.Enrollment).filter(
+        models.Enrollment.classroom_id == classroom_id
+    ).order_by(models.User.enrollment_number).all() # Sorted by enrollment number!
+
+def remove_student_from_classroom(db: Session, student_id: int, classroom_id: int):
+    """Removes a student from a classroom by deleting the enrollment record."""
+    db.query(models.Enrollment).filter(
+        models.Enrollment.student_id == student_id,
+        models.Enrollment.classroom_id == classroom_id
+    ).delete()
+    db.commit()

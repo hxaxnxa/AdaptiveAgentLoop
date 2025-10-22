@@ -42,36 +42,50 @@ app.include_router(assignments.router)
 
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    """Registers a new user (teacher or student)."""
-    db_user = crud.get_user_by_email(db, email=user.email)
-    if db_user:
+    # 1. Check if email is in use
+    db_user_email = crud.get_user_by_email(db, email=user.email)
+    if db_user_email:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # Check for valid role
-    if user.role not in ["teacher", "student"]:
+    # 2. Check role and enrollment number
+    if user.role == "student":
+        if not user.enrollment_number:
+            raise HTTPException(status_code=400, detail="Student registration requires an enrollment number")
+        db_user_enrollment = crud.get_user_by_enrollment_number(db, enrollment_number=user.enrollment_number)
+        if db_user_enrollment:
+            raise HTTPException(status_code=400, detail="Enrollment number already registered")
+    elif user.role == "teacher":
+        if user.enrollment_number:
+            raise HTTPException(status_code=400, detail="Teacher registration must not have an enrollment number")
+    else:
         raise HTTPException(status_code=400, detail="Invalid role. Must be 'teacher' or 'student'")
-        
+    
     new_user = crud.create_user(db=db, user=user)
-    return {"message": "User created successfully"}
+    
+    if new_user.role == "teacher":
+        return {"message": "Teacher account created successfully. It is pending admin approval."}
+    
+    return {"message": "Student account created successfully."}
 
 @app.post("/api/auth/login", response_model=schemas.Token)
 def login_for_access_token(user_login: schemas.UserLogin, db: Session = Depends(get_db)):
-    """Logs in a user and returns a JWT access token."""
-    user = crud.get_user_by_email(db, email=user_login.email)
+    # 1. Find user by email OR enrollment number
+    user = crud.get_user_by_login_id(db, login_id=user_login.login_id)
     
-    # Check 1: Does the user exist?
     if not user:
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
+        raise HTTPException(status_code=401, detail="Incorrect email/enrollment number or password")
     
-    # Check 2: Does the password match?
     if not auth.verify_password(user_login.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
+        raise HTTPException(status_code=401, detail="Incorrect email/enrollment number or password")
         
-    # Check 3: Is the role correct?
     if user.role != user_login.role:
         raise HTTPException(status_code=401, detail=f"You are not registered as a {user_login.role}")
-    
-    # Create and return the access token
+        
+    # 2. NEW: Check if the user is approved
+    if not user.is_approved:
+        raise HTTPException(status_code=401, detail="Account is pending approval. Please contact admin.")
+
+    # ... (create_access_token logic - no change)
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
         data={"sub": user.email, "role": user.role}, 

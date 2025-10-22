@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
-
 from .. import crud, models, schemas, auth
 from ..database import get_db
 from ..agents.quiz_grader import grade_quiz # Import our new agent
@@ -20,13 +19,11 @@ def create_new_assignment(
     classroom_id: int,
     assignment: schemas.AssignmentCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_active_user)
+    current_user: models.User = Depends(auth.get_teacher_user)
 ):
-    """Creates a new assignment (quiz) for a classroom. (Teacher only)"""
-    if current_user.role != "teacher":
-        raise HTTPException(status_code=403, detail="Only teachers can create assignments")
-    
-    # TODO: Check if teacher owns this classroom
+    db_classroom = crud.get_classroom_by_id(db, classroom_id=classroom_id)
+    if not db_classroom or db_classroom.teacher_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not own this classroom")
     
     return crud.create_assignment(db=db, assignment=assignment, classroom_id=classroom_id)
 
@@ -39,8 +36,14 @@ def get_assignments(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_active_user)
 ):
-    """Gets all assignments for a given classroom."""
-    # TODO: Check if user is enrolled in or owns this classroom
+    # Check if user is enrolled (student) or owns (teacher)
+    if current_user.role == "student":
+        if not crud.is_student_enrolled(db, current_user.id, classroom_id):
+            raise HTTPException(status_code=403, detail="You are not enrolled in this class")
+    elif current_user.role == "teacher":
+        db_classroom = crud.get_classroom_by_id(db, classroom_id=classroom_id)
+        if not db_classroom or db_classroom.teacher_id != current_user.id:
+            raise HTTPException(status_code=403, detail="You do not own this classroom")
     
     return crud.get_assignments_for_classroom(db=db, classroom_id=classroom_id)
 
@@ -51,17 +54,16 @@ def get_assignments(
 def get_assignment_to_take(
     assignment_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_active_user)
+    current_user: models.User = Depends(auth.get_student_user)
 ):
-    """Gets a single assignment, formatted for a student to take."""
-    if current_user.role != "student":
-        raise HTTPException(status_code=403, detail="Only students can take assignments")
-    
-    # TODO: Check if student is enrolled in the assignment's classroom
-    
     db_assignment = crud.get_assignment(db=db, assignment_id=assignment_id)
     if not db_assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
+        
+    # Check if student is enrolled in the assignment's class
+    if not crud.is_student_enrolled(db, current_user.id, db_assignment.classroom_id):
+        raise HTTPException(status_code=403, detail="You are not enrolled in this assignment's class")
+    
     return db_assignment
 
 @router.post(
@@ -73,13 +75,20 @@ def submit_assignment(
     submission: schemas.SubmissionCreate,
     background_tasks: BackgroundTasks, # Import from fastapi
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_active_user)
+    current_user: models.User = Depends(auth.get_student_user)
 ):
-    """Submits a student's answers for an assignment."""
-    if current_user.role != "student":
-        raise HTTPException(status_code=403, detail="Only students can submit assignments")
-        
-    # TODO: Check if student has already submitted
+    db_assignment = crud.get_assignment(db=db, assignment_id=assignment_id)
+    if not db_assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+
+    # Check if student is enrolled
+    if not crud.is_student_enrolled(db, current_user.id, db_assignment.classroom_id):
+        raise HTTPException(status_code=403, detail="You are not enrolled in this assignment's class")
+
+    # NEW: Implement Deadline Check
+    from datetime import datetime, timezone
+    if db_assignment.due_at and datetime.now(timezone.utc) > db_assignment.due_at:
+        raise HTTPException(status_code=403, detail="The deadline for this assignment has passed")
     
     # 1. Create the submission record in the DB
     db_submission = crud.create_submission(
@@ -110,6 +119,12 @@ def get_submission_result(
         submission_id=submission_id, 
         student_id=current_user.id
     )
+    if current_user.role == 'student' and not db_submission:
+        raise HTTPException(status_code=404, detail="Submission not found or does not belong to you")
+    
+    # TODO: Add logic for a teacher to view a student's submission
+    
     if not db_submission:
-        raise HTTPException(status_code=404, detail="Submission not found or does not belong to user")
+        raise HTTPException(status_code=404, detail="Submission not found")
+        
     return db_submission

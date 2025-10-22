@@ -12,7 +12,8 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False) # "teacher" or "student"
-
+    enrollment_number = Column(String, unique=True, index=True, nullable=True) # Nullable=True because teachers don't have one
+    is_approved = Column(Boolean, default=False, nullable=False)
     # --- ADD THESE RELATIONSHIPS ---
     # If I am a teacher, what classrooms do I own?
     owned_classrooms = relationship("Classroom", back_populates="owner")

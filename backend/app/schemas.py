@@ -7,9 +7,10 @@ class UserCreate(BaseModel):
     email: str
     password: constr(min_length=6, max_length=72)
     role: str # "teacher" or "student"
+    enrollment_number: Optional[str] = None
 
 class UserLogin(BaseModel):
-    email: str
+    login_id: str
     password: str
     role: str
 
@@ -28,6 +29,7 @@ class UserDisplay(BaseModel):
     id: int
     email: str
     role: str
+    enrollment_number: Optional[str] = None
 
     class Config:
         from_attributes = True # This tells Pydantic to read data from ORM models

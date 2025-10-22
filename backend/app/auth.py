@@ -5,8 +5,6 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session # Import Session
-
-# Import our new modules
 from . import schemas, models, crud, database
 
 # --- CONTEXT/KEYS (No Change) ---
@@ -73,4 +71,31 @@ async def get_current_active_user(
     current_user: models.User = Depends(get_current_user)
 ):
     # In the future, you could add a check here (e.g., if user.is_active is False)
+    return current_user
+
+def get_teacher_user(
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Dependency to ensure the user is an *approved* teacher."""
+    if current_user.role != "teacher":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Not authorized: Requires teacher role"
+        )
+    if not current_user.is_approved:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Teacher account is pending approval"
+        )
+    return current_user
+
+def get_student_user(
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Dependency to ensure the user is a student."""
+    if current_user.role != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Not authorized: Requires student role"
+        )
     return current_user

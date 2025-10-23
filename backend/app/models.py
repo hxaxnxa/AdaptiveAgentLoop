@@ -1,131 +1,127 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, Float, Text, JSON
 from sqlalchemy.orm import relationship
-from sqlalchemy import Boolean, DateTime, Float, Text
-from sqlalchemy.sql import func
 from .database import Base
-import secrets # Import secrets to generate invite codes
+import secrets
+from sqlalchemy.sql import func
 
+# --- User model (from M3.5) ---
 class User(Base):
     __tablename__ = "users"
-
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    role = Column(String, nullable=False) # "teacher" or "student"
-    enrollment_number = Column(String, unique=True, index=True, nullable=True) # Nullable=True because teachers don't have one
+    role = Column(String, nullable=False)
+    enrollment_number = Column(String, unique=True, index=True, nullable=True)
     is_approved = Column(Boolean, default=False, nullable=False)
-    # --- ADD THESE RELATIONSHIPS ---
-    # If I am a teacher, what classrooms do I own?
-    owned_classrooms = relationship("Classroom", back_populates="owner")
     
-    # What classrooms am I enrolled in (as a student)?
-    enrolled_classrooms = relationship(
-        "Classroom", secondary="enrollments", back_populates="students"
-    )
+    owned_classrooms = relationship("Classroom", back_populates="owner")
+    enrolled_classrooms = relationship("Classroom", secondary="enrollments", back_populates="students")
 
+# --- Classroom model (from M2) ---
 def generate_invite_code():
-    """Generates a unique 6-character code."""
     return secrets.token_hex(3).upper()
 
 class Classroom(Base):
     __tablename__ = "classrooms"
-
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, nullable=False)
     invite_code = Column(String, unique=True, index=True, default=generate_invite_code)
     
-    # --- ADD THESE RELATIONSHIPS ---
-    # Link to the teacher who owns this class
     teacher_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="owned_classrooms")
     
-    # Link to all students enrolled in this class
-    students = relationship(
-        "User", secondary="enrollments", back_populates="enrolled_classrooms"
-    )
-
-class Enrollment(Base):
-    """This is a many-to-many association table."""
-    __tablename__ = "enrollments"
+    students = relationship("User", secondary="enrollments", back_populates="enrolled_classrooms")
     
+    # --- ADDED RELATIONSHIP ---
+    courseworks = relationship("Coursework", back_populates="classroom", cascade="all, delete-orphan")
+
+# --- Enrollment model (from M2) ---
+class Enrollment(Base):
+    __tablename__ = "enrollments"
     student_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     classroom_id = Column(Integer, ForeignKey("classrooms.id"), primary_key=True)
 
-class Assignment(Base):
-    __tablename__ = "assignments"
+# --- RENAMED: Coursework (was Assignment) ---
+class Coursework(Base):
+    __tablename__ = "coursework" # --- RENAMED ---
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, nullable=False)
-    due_at = Column(DateTime(timezone=True), nullable=True) # For deadlines
-    assignment_type = Column(String, default="quiz") # For future (e.g., 'essay')
     
-    # Link to the classroom
+    # --- UPDATED: Deadline fields ---
+    available_from = Column(DateTime(timezone=True), server_default=func.now()) # Start time
+    due_at = Column(DateTime(timezone=True), nullable=True) # End time
+    
+    # --- UPDATED: Type field ---
+    # Will be 'quiz', 'assignment', 'case_study', 'essay'
+    coursework_type = Column(String, nullable=False)
+    
+    # For essays/assignments
+    rubric = Column(JSON, nullable=True) 
+    
+    # Link to classroom
     classroom_id = Column(Integer, ForeignKey("classrooms.id"))
-    classroom = relationship("Classroom")
+    classroom = relationship("Classroom", back_populates="courseworks")
     
-    # Link to all questions
-    questions = relationship("Question", back_populates="assignment", cascade="all, delete-orphan")
-    # Link to all submissions
-    submissions = relationship("Submission", back_populates="assignment", cascade="all, delete-orphan")
+    # For quizzes
+    questions = relationship("Question", back_populates="coursework", cascade="all, delete-orphan")
+    submissions = relationship("Submission", back_populates="coursework", cascade="all, delete-orphan")
 
+# --- Question model (Updated relationship) ---
 class Question(Base):
     __tablename__ = "questions"
-    
     id = Column(Integer, primary_key=True, index=True)
     question_text = Column(Text, nullable=False)
-    # In the future: question_type (e.g., 'multiple-choice', 'short-answer')
     
-    # Link to the assignment
-    assignment_id = Column(Integer, ForeignKey("assignments.id"))
-    assignment = relationship("Assignment", back_populates="questions")
+    # --- UPDATED RELATIONSHIP ---
+    coursework_id = Column(Integer, ForeignKey("coursework.id"))
+    coursework = relationship("Coursework", back_populates="questions")
     
-    # Link to all options
     options = relationship("Option", back_populates="question", cascade="all, delete-orphan")
-    # Link to all answers
     submission_answers = relationship("SubmissionAnswer", back_populates="question")
 
+# --- Option model (No change) ---
 class Option(Base):
     __tablename__ = "options"
-    
     id = Column(Integer, primary_key=True, index=True)
     option_text = Column(Text, nullable=False)
     is_correct = Column(Boolean, default=False, nullable=False)
-    
-    # Link to the question
     question_id = Column(Integer, ForeignKey("questions.id"))
     question = relationship("Question", back_populates="options")
 
+# --- Submission model (Updated field names) ---
 class Submission(Base):
     __tablename__ = "submissions"
-    
     id = Column(Integer, primary_key=True, index=True)
     submitted_at = Column(DateTime(timezone=True), server_default=func.now())
-    score = Column(Float, nullable=True) # The grade (e.g., 0.8 for 80%)
+    score = Column(Float, nullable=True) 
     
-    # Link to the assignment
-    assignment_id = Column(Integer, ForeignKey("assignments.id"))
-    assignment = relationship("Assignment", back_populates="submissions")
+    # --- RENAMED: submission_content -> submission_text ---
+    submission_text = Column(Text, nullable=True) 
     
-    # Link to the student
+    ai_feedback = Column(JSON, nullable=True)
+    # --- RENAMED: teacher_feedback (for M5) ---
+    final_feedback = Column(Text, nullable=True)
+    final_score = Column(Float, nullable=True)
+    
+    status = Column(String, default="SUBMITTED", nullable=False) 
+    
+    # --- UPDATED RELATIONSHIP ---
+    coursework_id = Column(Integer, ForeignKey("coursework.id"))
+    coursework = relationship("Coursework", back_populates="submissions")
+    
     student_id = Column(Integer, ForeignKey("users.id"))
     student = relationship("User")
     
-    # Link to all answers
     answers = relationship("SubmissionAnswer", back_populates="submission", cascade="all, delete-orphan")
 
+# --- SubmissionAnswer model (No change) ---
 class SubmissionAnswer(Base):
     __tablename__ = "submission_answers"
-    
     id = Column(Integer, primary_key=True, index=True)
-    
-    # Link to the main submission
     submission_id = Column(Integer, ForeignKey("submissions.id"))
     submission = relationship("Submission", back_populates="answers")
-    
-    # Link to the question being answered
     question_id = Column(Integer, ForeignKey("questions.id"))
     question = relationship("Question", back_populates="submission_answers")
-    
-    # Link to the specific option the student chose
     selected_option_id = Column(Integer, ForeignKey("options.id"))
     selected_option = relationship("Option")

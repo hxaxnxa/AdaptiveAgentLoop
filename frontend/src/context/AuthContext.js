@@ -1,44 +1,63 @@
-import React, { createContext, useState, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react'; // Import useEffect
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../api/apiClient';
+import { jwtDecode } from 'jwt-decode'; // Import this
 
-// 1. Create the context
 const AuthContext = createContext(null);
 
-// 2. Create the provider component
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
+  const [user, setUser] = useState(null); // --- ADD THIS STATE ---
   const navigate = useNavigate();
 
-  // 3. Login function
-  const login = async (email, password, role) => {
+  // --- ADD THIS EFFECT ---
+  // This effect runs when the app loads to decode an existing token
+  useEffect(() => {
+    if (token) {
+      try {
+        const decodedToken = jwtDecode(token);
+        // 'sub' is email, 'role' is role from our backend
+        setUser({ email: decodedToken.sub, role: decodedToken.role });
+      } catch (error) {
+        console.error("Invalid token:", error);
+        logout(); // Log out if token is bad
+      }
+    }
+  }, [token]); // Reruns if the token changes
+
+  const login = async (loginId, password, role) => {
     try {
       const response = await apiClient.post('/api/auth/login', {
-        email,
+        login_id: loginId,
         password,
         role,
       });
       
       const { access_token } = response.data;
       setToken(access_token);
-      localStorage.setItem('token', access_token); // Persist token in browser
-      navigate('/dashboard'); // Redirect to dashboard on success
+      localStorage.setItem('token', access_token);
+      // Decode the token immediately on login
+      const decodedToken = jwtDecode(access_token);
+      setUser({ email: decodedToken.sub, role: decodedToken.role });
+      
+      navigate('/dashboard');
     } catch (error) {
       console.error('Login failed:', error);
-      alert('Login failed: ' + error.response.data.detail);
+      throw new Error(error.response?.data?.detail || 'Login failed');
     }
   };
 
-  // 4. Logout function
   const logout = () => {
     setToken(null);
+    setUser(null); // --- ADD THIS ---
     localStorage.removeItem('token');
     navigate('/login');
   };
 
-  // 5. Value to be passed to consuming components
+  // --- UPDATE THE VALUE ---
   const value = {
     token,
+    user, // Share the user object
     login,
     logout,
   };
@@ -46,7 +65,6 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// 6. Custom hook to easily use the context
 export const useAuth = () => {
   return useContext(AuthContext);
 };

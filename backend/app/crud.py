@@ -1,91 +1,88 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from . import models, schemas, auth
 
-# --- User Functions (No Change) ---
+# --- User Functions (from M3.5) ---
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
-
 def get_user_by_enrollment_number(db: Session, enrollment_number: str):
     return db.query(models.User).filter(models.User.enrollment_number == enrollment_number).first()
-
-# --- NEW: get_user_by_login_id ---
 def get_user_by_login_id(db: Session, login_id: str):
-    """Fetches a user by either their email OR their enrollment number."""
     return db.query(models.User).filter(
         (models.User.email == login_id) | (models.User.enrollment_number == login_id)
     ).first()
-
 def create_user(db: Session, user: schemas.UserCreate):
     hashed_password = auth.get_password_hash(user.password)
     is_approved = True if user.role == 'student' else False
-
     db_user = models.User(
-        email=user.email, 
-        hashed_password=hashed_password, 
+        email=user.email,
+        hashed_password=hashed_password,
         role=user.role,
         enrollment_number=user.enrollment_number,
-        is_approved=is_approved,
+        is_approved=is_approved
     )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    db.add(db_user); db.commit(); db.refresh(db_user); return db_user
 
-# --- NEW: Classroom Functions ---
-
+# --- Classroom Functions (from M3.5) ---
 def create_classroom(db: Session, classroom: schemas.ClassroomCreate, teacher_id: int):
-    """Creates a new classroom in the DB, linked to the teacher."""
     db_classroom = models.Classroom(name=classroom.name, teacher_id=teacher_id)
-    db.add(db_classroom)
-    db.commit()
-    db.refresh(db_classroom)
-    return db_classroom
-
+    db.add(db_classroom); db.commit(); db.refresh(db_classroom); return db_classroom
 def get_classrooms_by_teacher(db: Session, teacher_id: int):
-    """Gets all classrooms owned by a specific teacher."""
     return db.query(models.Classroom).filter(models.Classroom.teacher_id == teacher_id).all()
-
 def get_classrooms_by_student(db: Session, student_id: int):
-    """Gets all classrooms a student is enrolled in."""
-    # This is a query across the join table
     return db.query(models.Classroom).join(models.Enrollment).filter(
         models.Enrollment.student_id == student_id
     ).all()
-
 def get_classroom_by_invite_code(db: Session, code: str):
-    """Finds a classroom by its unique invite code."""
     return db.query(models.Classroom).filter(models.Classroom.invite_code == code).first()
-
 def add_student_to_classroom(db: Session, student_id: int, classroom_id: int):
-    """Creates an enrollment record."""
     enrollment = models.Enrollment(student_id=student_id, classroom_id=classroom_id)
-    db.add(enrollment)
+    db.add(enrollment); db.commit(); return enrollment
+def get_classroom_by_id(db: Session, classroom_id: int):
+    return db.query(models.Classroom).get(classroom_id)
+def is_student_enrolled(db: Session, student_id: int, classroom_id: int):
+    return db.query(models.Enrollment).filter(
+        models.Enrollment.student_id == student_id,
+        models.Enrollment.classroom_id == classroom_id
+    ).first() is not None
+def get_students_in_classroom(db: Session, classroom_id: int):
+    return db.query(models.User).join(models.Enrollment).filter(
+        models.Enrollment.classroom_id == classroom_id
+    ).order_by(models.User.enrollment_number).all()
+def remove_student_from_classroom(db: Session, student_id: int, classroom_id: int):
+    db.query(models.Enrollment).filter(
+        models.Enrollment.student_id == student_id,
+        models.Enrollment.classroom_id == classroom_id
+    ).delete()
     db.commit()
-    return enrollment
 
-def create_assignment(db: Session, assignment: schemas.AssignmentCreate, classroom_id: int):
-    """Creates a new assignment, with all its questions and options."""
-    # 1. Create the main Assignment
-    db_assignment = models.Assignment(
-        name=assignment.name,
-        due_at=assignment.due_at,
+# --- RENAMED: Coursework & Submission Functions ---
+
+def create_coursework(db: Session, coursework: schemas.CourseworkCreate, classroom_id: int):
+    # --- UPDATED to new schema ---
+    rubric_data = [r.dict() for r in coursework.rubric] if coursework.rubric else None
+    
+    db_coursework = models.Coursework(
+        name=coursework.name,
+        available_from=coursework.available_from, # --- ADDED ---
+        due_at=coursework.due_at,
+        coursework_type=coursework.coursework_type, # --- ADDED ---
+        rubric=rubric_data, # --- ADDED ---
         classroom_id=classroom_id
     )
-    db.add(db_assignment)
+    db.add(db_coursework)
     db.commit()
-    db.refresh(db_assignment)
+    db.refresh(db_coursework)
     
-    # 2. Loop and create each Question
-    for question_in in assignment.questions:
+    # --- UPDATED: Safe iteration ---
+    for question_in in coursework.questions or []:
         db_question = models.Question(
             question_text=question_in.question_text,
-            assignment_id=db_assignment.id
+            coursework_id=db_coursework.id # --- UPDATED ---
         )
         db.add(db_question)
         db.commit()
         db.refresh(db_question)
         
-        # 3. Loop and create each Option for the question
         for option_in in question_in.options:
             db_option = models.Option(
                 option_text=option_in.option_text,
@@ -94,33 +91,35 @@ def create_assignment(db: Session, assignment: schemas.AssignmentCreate, classro
             )
             db.add(db_option)
             
-    # Commit all the nested options and questions
     db.commit()
-    db.refresh(db_assignment)
-    return db_assignment
+    db.refresh(db_coursework)
+    return db_coursework
 
-def get_assignments_for_classroom(db: Session, classroom_id: int):
-    """Gets all assignments for a single classroom."""
-    return db.query(models.Assignment).filter(
-        models.Assignment.classroom_id == classroom_id
+def get_courseworks_for_classroom(db: Session, classroom_id: int):
+    return db.query(models.Coursework).filter(
+        models.Coursework.classroom_id == classroom_id
     ).all()
 
-def get_assignment(db: Session, assignment_id: int):
-    """Gets a single assignment by its ID."""
-    return db.query(models.Assignment).get(assignment_id)
+def get_coursework(db: Session, coursework_id: int):
+    return db.query(models.Coursework).get(coursework_id)
 
-def create_submission(db: Session, submission: schemas.SubmissionCreate, assignment_id: int, student_id: int):
-    """Creates a new submission record and its associated answers."""
-    # 1. Create the main Submission
+# --- NEW: Check for single attempt (Req #2) ---
+def get_submission_by_student_and_coursework(db: Session, student_id: int, coursework_id: int):
+    return db.query(models.Submission).filter(
+        models.Submission.student_id == student_id,
+        models.Submission.coursework_id == coursework_id
+    ).first()
+
+def create_quiz_submission(db: Session, submission: schemas.QuizSubmissionCreate, coursework_id: int, student_id: int):
     db_submission = models.Submission(
-        assignment_id=assignment_id,
-        student_id=student_id
+        coursework_id=coursework_id,
+        student_id=student_id,
+        status="SUBMITTED" # Graded immediately by task
     )
     db.add(db_submission)
     db.commit()
     db.refresh(db_submission)
     
-    # 2. Loop and create each SubmissionAnswer
     for answer_in in submission.answers:
         db_answer = models.SubmissionAnswer(
             submission_id=db_submission.id,
@@ -133,37 +132,29 @@ def create_submission(db: Session, submission: schemas.SubmissionCreate, assignm
     db.refresh(db_submission)
     return db_submission
 
-def get_submission(db: Session, submission_id: int, student_id: int):
-    """Gets a submission result, ensuring it belongs to the student."""
+def create_essay_submission(db: Session, submission: schemas.EssaySubmissionCreate, coursework_id: int, student_id: int):
+    db_submission = models.Submission(
+        coursework_id=coursework_id,
+        student_id=student_id,
+        submission_text=submission.submission_text, # --- RENAMED ---
+        status="SUBMITTED" # Will be picked up by AI task
+    )
+    db.add(db_submission)
+    db.commit()
+    db.refresh(db_submission)
+    return db_submission
+
+def get_submission_detail(db: Session, submission_id: int, student_id: int):
+    # --- UPDATED for Req #4 ---
+    # Eagerly load all the nested data we need for the UI
     return db.query(models.Submission).filter(
         models.Submission.id == submission_id,
         models.Submission.student_id == student_id
+    ).options(
+        joinedload(models.Submission.coursework),
+        joinedload(models.Submission.answers)
+            .joinedload(models.SubmissionAnswer.question)
+            .joinedload(models.Question.options),
+        joinedload(models.Submission.answers)
+            .joinedload(models.SubmissionAnswer.selected_option)
     ).first()
-
-
-# --- ADD NEW CRUD functions for M3.5 ---
-
-def get_classroom_by_id(db: Session, classroom_id: int):
-    """Gets a classroom by its primary key ID."""
-    return db.query(models.Classroom).get(classroom_id)
-
-def is_student_enrolled(db: Session, student_id: int, classroom_id: int):
-    """Checks if a specific student is enrolled in a specific classroom."""
-    return db.query(models.Enrollment).filter(
-        models.Enrollment.student_id == student_id,
-        models.Enrollment.classroom_id == classroom_id
-    ).first() is not None
-
-def get_students_in_classroom(db: Session, classroom_id: int):
-    """Gets all User objects for students enrolled in a classroom."""
-    return db.query(models.User).join(models.Enrollment).filter(
-        models.Enrollment.classroom_id == classroom_id
-    ).order_by(models.User.enrollment_number).all() # Sorted by enrollment number!
-
-def remove_student_from_classroom(db: Session, student_id: int, classroom_id: int):
-    """Removes a student from a classroom by deleting the enrollment record."""
-    db.query(models.Enrollment).filter(
-        models.Enrollment.student_id == student_id,
-        models.Enrollment.classroom_id == classroom_id
-    ).delete()
-    db.commit()

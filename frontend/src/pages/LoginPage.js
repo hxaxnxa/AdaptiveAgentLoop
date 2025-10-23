@@ -3,23 +3,38 @@ import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 
 const LoginPage = () => {
-  const [email, setEmail] = useState('');
+  const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('student'); // Default to 'student'
+  const [role, setRole] = useState('student');
+  const [error, setError] = useState(null); 
   const { login } = useAuth(); // Get the login function from our context
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    login(email, password, role);
+    setError(null);
+
+    try {
+      // We update the login function in AuthContext to be async
+      await login(loginId, password, role);
+    } catch (err) {
+      // The login function in context will throw an error
+      setError(err.message || 'Login failed. Please check your credentials.');
+    }
   };
 
   return (
     <div>
       <h2>Login</h2>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
       <form onSubmit={handleSubmit}>
         <div>
-          <label>Email:</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <label>Email or Enrollment Number:</label>
+          <input 
+            type="text" 
+            value={loginId} 
+            onChange={(e) => setLoginId(e.target.value)} 
+            required 
+          />
         </div>
         <div>
           <label>Password:</label>

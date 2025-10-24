@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import apiClient from '../api/apiClient';
 
@@ -8,7 +8,8 @@ const StudentManagementPage = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  const fetchStudents = async () => {
+  // This function is now wrapped in useCallback
+  const fetchStudents = useCallback(async () => {
     setLoading(true);
     try {
       const response = await apiClient.get(`/api/classrooms/${classroomId}/students`);
@@ -18,19 +19,18 @@ const StudentManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [classroomId]); // It correctly depends on classroomId
 
   useEffect(() => {
     fetchStudents();
-  }, [classroomId]);
+  }, [fetchStudents]); // <-- THIS IS THE FIX: Changed [classroomId] to [fetchStudents]
 
   const handleRemoveStudent = async (studentId) => {
     if (window.confirm("Are you sure you want to remove this student from the class?")) {
       try {
         await apiClient.delete(`/api/classrooms/${classroomId}/students/${studentId}`);
         alert('Student removed.');
-        // Refresh the list
-        fetchStudents();
+        fetchStudents(); // Re-fetch students after removal
       } catch (error) {
         console.error("Failed to remove student:", error);
         alert('Could not remove student: ' + error.response?.data?.detail);
@@ -63,6 +63,12 @@ const StudentManagementPage = () => {
                 <td>{student.enrollment_number}</td>
                 <td>{student.email}</td>
                 <td>
+                  <button 
+                    onClick={() => navigate(`/student/${student.id}/profile`)} 
+                    style={{ marginRight: '5px' }}
+                  >
+                    View Profile
+                  </button>
                   <button onClick={() => handleRemoveStudent(student.id)} style={{color: 'red'}}>
                     Remove
                   </button>

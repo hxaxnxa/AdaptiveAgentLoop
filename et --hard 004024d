@@ -1,0 +1,11 @@
+[33m4554a1c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{0}: commit (amend): Milestone 6: Integrated graph data using neo4j, Concept tags for remial quizzes, Teaacher and Student dashboard updates.
+[33m004024d[m[33m ([m[1;31morigin/main[m[33m)[m HEAD@{1}: commit (amend): Milestone 5: continution to add teacher feedback prominent to student
+[33m82813af[m HEAD@{2}: commit (amend): Milestone 5: Added file uploads, contextual AI quiz gen, universal teacher approval, and quiz regrading
+[33me643cff[m HEAD@{3}: commit: Milestone 4.5 (Revised): Added file uploads, contextual AI quiz gen, universal teacher approval, and quiz regrading
+[33ma471357[m HEAD@{4}: commit: Milestone 4: Full refactor to Coursework + added deadlines, single-attempt checks, rubric upload, and detailed submission viewing
+[33m38495e7[m HEAD@{5}: commit: Milestone 3.5: Implemented security hardening, teacher approval, enrollment numbers, and student management
+[33mc26f1f7[m HEAD@{6}: commit: Milestone 3: Implemented quiz creation, submission, and auto-grading agent
+[33mfe0b046[m HEAD@{7}: commit: Milestone 2: Implemented classroom creation, invites, and enrollment with protected endpoints
+[33m00b56e7[m HEAD@{8}: commit: Milestone 1: Implemented user authentication with JWT, protected routes, and database models
+[33m0ea741d[m HEAD@{9}: Branch: renamed refs/heads/Main to refs/heads/main
+[33m0ea741d[m HEAD@{11}: commit (initial): Milestone 0: Initialized project with backend and frontend handshake

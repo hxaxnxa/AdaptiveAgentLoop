@@ -5,30 +5,46 @@ import apiClient from '../api/apiClient';
 const CourseworkReviewPage = () => {
   const { courseworkId } = useParams();
   const [submissions, setSubmissions] = useState([]);
+  const [coursework, setCoursework] = useState(null); // <-- ADD THIS STATE
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchSubmissions = async () => {
+    const fetchData = async () => {
       try {
-        const response = await apiClient.get(`/api/coursework/${courseworkId}/submissions`);
-        setSubmissions(response.data);
+        // Fetch submissions (as before)
+        const subResponse = await apiClient.get(`/api/coursework/${courseworkId}/submissions`);
+        setSubmissions(subResponse.data);
+
+        // --- FIX: Fetch coursework data to get classroom_id ---
+        const cwResponse = await apiClient.get(`/api/coursework/${courseworkId}/details`);
+        setCoursework(cwResponse.data);
+        
       } catch (error) {
-        console.error("Failed to fetch submissions:", error);
+        console.error("Failed to fetch data:", error);
       } finally {
         setLoading(false);
       }
     };
-    fetchSubmissions();
+    fetchData();
   }, [courseworkId]);
 
   if (loading) return <p>Loading submissions...</p>;
 
   return (
     <div>
-      <h2>Review Submissions</h2>
-      <button onClick={() => navigate(`/classroom/${courseworkId}`)}>Back to Classroom</button>
+      <h2>Review Submissions for {coursework?.name}</h2>
+      
+      {/* --- FIX: Use coursework.classroom_id for navigation --- */}
+      <button 
+        onClick={() => navigate(`/classroom/${coursework.classroom_id}`)}
+        disabled={!coursework}
+      >
+        Back to Classroom
+      </button>
+      
       <table>
+        {/* ... (rest of your table is correct) ... */}
         <thead>
           <tr>
             <th>Enrollment #</th>

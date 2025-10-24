@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from typing import List
 from .. import crud, models, schemas, auth
 from ..database import get_db
+from pydantic import BaseModel
+from typing import Optional
 
 # Create a new "router". This is like a mini-FastAPI app.
 router = APIRouter(
@@ -87,3 +89,59 @@ def remove_student(
     
     crud.remove_student_from_classroom(db, student_id=student_id, classroom_id=classroom_id)
     return {"message": "Student removed successfully"}
+
+# --- DTOs for Gradebook ---
+class GradebookScore(BaseModel):
+    coursework_id: int
+    final_score: Optional[float] = None
+
+class GradebookStudentRow(BaseModel):
+    student: schemas.UserDisplay
+    scores: dict[int, GradebookScore] # { coursework_id: score_object }
+
+class GradebookResponse(BaseModel):
+    courseworks: List[schemas.CourseworkDisplay]
+    students: List[GradebookStudentRow]
+    class Config:
+        from_attributes = True
+
+@router.get("/{classroom_id}/gradebook", response_model=GradebookResponse)
+def get_classroom_gradebook(
+    classroom_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_teacher_user)
+):
+    # (Add your logic to verify teacher owns this classroom)
+    if not crud.get_classroom_by_id(db, classroom_id).teacher_id == current_user.id:
+         raise HTTPException(status_code=403, detail="Not authorized")
+         
+    data = crud.get_gradebook_data(db, classroom_id)
+    return data
+
+class GradeDistribution(BaseModel):
+    A: int = 0
+    B: int = 0
+    C: int = 0
+    D: int = 0
+    F: int = 0
+
+class CourseworkAnalytics(BaseModel):
+    coursework_id: int
+    coursework_name: str
+    class_average: Optional[float] = None
+    highest_score: Optional[float] = None
+    lowest_score: Optional[float] = None
+    submission_rate: str
+    grade_distribution: GradeDistribution
+
+@router.get("/{classroom_id}/analytics", response_model=List[CourseworkAnalytics])
+def get_classroom_analytics(
+    classroom_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_teacher_user)
+):
+    # (Add your logic to verify teacher owns this classroom)
+    if not crud.get_classroom_by_id(db, classroom_id).teacher_id == current_user.id:
+         raise HTTPException(status_code=403, detail="Not authorized")
+         
+    return crud.get_class_analytics(db, classroom_id)

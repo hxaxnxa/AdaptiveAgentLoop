@@ -9,6 +9,8 @@ import JoinClassroomPage from './pages/JoinClassroomPage';
 import ClassroomDetailPage from './pages/ClassroomDetailPage';
 import StudentManagementPage from './pages/StudentManagementPage';
 import Navbar from './components/Navbar';
+import StudentProfilePage from './pages/StudentProfilePage';
+
 import './App.css';
 
 // --- RENAMED IMPORTS ---
@@ -18,6 +20,9 @@ import QuizTakePage from './pages/QuizTakePage';
 import EssaySubmitPage from './pages/EssaySubmitPage';
 import SubmissionResultPage from './pages/SubmissionResultPage';
 import SubmissionReviewPage from './pages/SubmissionReviewPage';
+import GradebookPage from './pages/GradebookPage';
+import RemedialQuizTakePage from './pages/RemedialQuizTakePage';
+import ClassAnalyticsPage from './pages/ClassAnalyticsPage';
 
 const PrivateRoute = ({ children }) => {
   const { token } = useAuth();
@@ -63,6 +68,10 @@ function App() {
             path="/submission/:submissionId/result" 
             element={<PrivateRoute><SubmissionResultPage /></PrivateRoute>} 
           />
+          <Route path="/classroom/:classroomId/gradebook" element={<PrivateRoute><GradebookPage /></PrivateRoute>} />
+          <Route path="/remedial/:quizId/take" element={<PrivateRoute><RemedialQuizTakePage /></PrivateRoute>} />
+          <Route path="/student/:studentId/profile" element={<PrivateRoute><StudentProfilePage /></PrivateRoute>} />
+          <Route path="/classroom/:classroomId/analytics" element={<PrivateRoute><ClassAnalyticsPage /></PrivateRoute>} />
           
           {/* Default route */}
           <Route path="/" element={<Navigate to="/dashboard" />} />

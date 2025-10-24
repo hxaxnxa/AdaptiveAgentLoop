@@ -102,7 +102,7 @@ const QuizBuilder = ({ questions, setQuestions, materialUrls }) => {
   };
 
   const addQuestion = () => {
-    setQuestions([...questions, { question_text: '', question_type: 'multiple_choice', score: 1, options: [{ option_text: '', is_correct: false }] }]);
+    setQuestions([...questions, { question_text: '', question_type: 'multiple_choice', score: 1, options: [{ option_text: '', is_correct: false }], concept_tags: [] }]);
   };
 
   const removeQuestion = (qIndex) => setQuestions(questions.filter((_, i) => i !== qIndex));
@@ -150,6 +150,12 @@ const QuizBuilder = ({ questions, setQuestions, materialUrls }) => {
             <option value="multiple_choice">Multiple Choice</option>
             <option value="multiple_response">Multiple Response</option>
           </select>
+          <input 
+            type="text" 
+            placeholder="Concepts (comma, separated)"
+            value={q.concept_tags ? q.concept_tags.join(',') : ''} 
+            onChange={e => handleQuestionChange(qIndex, 'concept_tags', e.target.value.split(','))}
+          />
           <button type="button" onClick={() => removeQuestion(qIndex)}>Remove Question</button>
 
           {q.options.map((opt, oIndex) => (
@@ -183,6 +189,7 @@ const CreateCourseworkPage = () => {
   const [rubric, setRubric] = useState([]);
   const [rubricFileUrl, setRubricFileUrl] = useState(null);
   const [uploadingMaterials, setUploadingMaterials] = useState(false);
+  const [conceptTags, setConceptTags] = useState('');
 
   const handleMaterialFilesChange = (e) => setMaterialFiles([...e.target.files]);
 
@@ -216,6 +223,7 @@ const CreateCourseworkPage = () => {
       available_from: new Date(availableFrom).toISOString(),
       due_at: dueAt ? new Date(dueAt).toISOString() : null,
       material_file_urls: materialUrls,
+      concept_tags: conceptTags.split(',').filter(t => t.trim() !== '')
     };
 
     if (courseworkType === 'quiz') {
@@ -254,6 +262,15 @@ const CreateCourseworkPage = () => {
         <input type="datetime-local" value={availableFrom} onChange={(e) => setAvailableFrom(e.target.value)} required />
         <label>Due At:</label>
         <input type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+        <div>
+          <label>Concepts (comma-separated):</label>
+          <input 
+            type="text" 
+            placeholder="e.g., Python Basics,Data Structures"
+            value={conceptTags} 
+            onChange={(e) => setConceptTags(e.target.value)} 
+          />
+        </div>
 
         {courseworkType === 'quiz' ? (
           <div>

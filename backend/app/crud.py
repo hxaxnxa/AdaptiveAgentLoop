@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session, joinedload
 from . import models, schemas, auth
 from datetime import datetime, timezone
+from typing import List, Optional
 
 # --- User Functions (from M3.5) ---
 def get_user_by_email(db: Session, email: str):
@@ -68,8 +69,9 @@ def create_coursework(db: Session, coursework: schemas.CourseworkCreate, classro
         coursework_type=coursework.coursework_type,
         rubric=rubric_data,
         rubric_file_url=coursework.rubric_file_url,
-        material_file_urls=coursework.material_file_urls, # --- NEW ---
-        classroom_id=classroom_id
+        material_file_urls=coursework.material_file_urls,
+        classroom_id=classroom_id,
+        concept_tags=coursework.concept_tags  # <-- FIX: Added this line
     )
     db.add(db_coursework); db.commit(); db.refresh(db_coursework)
     
@@ -78,7 +80,8 @@ def create_coursework(db: Session, coursework: schemas.CourseworkCreate, classro
             question_text=question_in.question_text,
             question_type=question_in.question_type,
             score=question_in.score,
-            coursework_id=db_coursework.id
+            coursework_id=db_coursework.id,
+            concept_tags=question_in.concept_tags  # <-- FIX: Added this line
         )
         db.add(db_question); db.commit(); db.refresh(db_question)
         
@@ -93,11 +96,41 @@ def create_coursework(db: Session, coursework: schemas.CourseworkCreate, classro
     db.commit(); db.refresh(db_coursework)
     return db_coursework
 
-def get_courseworks_for_classroom(db: Session, classroom_id: int):
-    now = datetime.now(timezone.utc)
-    query = db.query(models.Coursework).filter(models.Coursework.classroom_id == classroom_id)
-    # If adding student context: query = query.filter(models.Coursework.available_from <= now)
-    return query.order_by(models.Coursework.available_from).all()
+def delete_coursework(db: Session, coursework: models.Coursework):
+    """Deletes a coursework item. Cascades are handled by the DB relationship."""
+    db.delete(coursework)
+    db.commit()
+
+def get_courseworks_for_classroom(db: Session, classroom_id: int, student_id: Optional[int] = None):
+    """
+    Gets all coursework for a classroom.
+    If student_id is provided, it also fetches their submission status.
+    """
+    courseworks = db.query(models.Coursework).filter(
+        models.Coursework.classroom_id == classroom_id
+    ).order_by(models.Coursework.available_from).all()
+    
+    if student_id is None:
+        # Teacher view: just return the coursework
+        return courseworks
+
+    # Student view: Find their submissions for this class
+    submissions = db.query(models.Submission).filter(
+        models.Submission.student_id == student_id,
+        models.Submission.coursework_id.in_([cw.id for cw in courseworks])
+    ).all()
+    
+    # Create a map for fast lookup
+    submission_map = {sub.coursework_id: sub.id for sub in submissions}
+    
+    # Build the enhanced response
+    response_list = []
+    for cw in courseworks:
+        cw_data = schemas.CourseworkForStudentList.model_validate(cw)
+        cw_data.submission_id = submission_map.get(cw.id)
+        response_list.append(cw_data)
+        
+    return response_list
 
 def get_coursework_with_details(db: Session, coursework_id: int): # --- RENAMED ---
     return db.query(models.Coursework).filter(models.Coursework.id == coursework_id).options(
@@ -191,3 +224,108 @@ def approve_submission(db: Session, submission_id: int, approval_data: schemas.S
         "status": "GRADED"
     })
     db.commit()
+
+def get_gradebook_data(db: Session, classroom_id: int):
+    # 1. Get all coursework for the class, ordered
+    courseworks = db.query(models.Coursework).filter(
+        models.Coursework.classroom_id == classroom_id
+    ).order_by(models.Coursework.available_from).all()
+    
+    # 2. Get all students in the class
+    students = get_students_in_classroom(db, classroom_id)
+    
+    # 3. Get all submissions for this class
+    submissions = db.query(models.Submission).join(models.Coursework).filter(
+        models.Coursework.classroom_id == classroom_id
+    ).all()
+    
+    # 4. Create a fast lookup map: { (student_id, coursework_id): final_score }
+    submission_map = {
+        (sub.student_id, sub.coursework_id): sub.final_score
+        for sub in submissions
+        if sub.final_score is not None
+    }
+    
+    # 5. Build the response structure
+    student_rows = []
+    for student in students:
+        scores = {}
+        for cw in courseworks:
+            score = submission_map.get((student.id, cw.id))
+            scores[cw.id] = {
+                "coursework_id": cw.id,
+                "final_score": score
+            }
+        student_rows.append({
+            "student": student,
+            "scores": scores
+        })
+        
+    return {
+        "courseworks": courseworks,
+        "students": student_rows
+    }
+
+
+def get_class_analytics(db: Session, classroom_id: int):
+    courseworks = db.query(models.Coursework).filter(
+        models.Coursework.classroom_id == classroom_id
+    ).all()
+    
+    total_students = db.query(models.Enrollment).filter(
+        models.Enrollment.classroom_id == classroom_id
+    ).count()
+    if total_students == 0:
+        return [] # Return empty if no students
+        
+    analytics = []
+    for cw in courseworks:
+        # --- FIX: Get ALL submissions for the rate ---
+        all_submissions = db.query(models.Submission).filter(
+            models.Submission.coursework_id == cw.id
+        ).all()
+        
+        # --- FIX: Filter for submissions with a score ---
+        scores = [s.final_score for s in all_submissions if s.final_score is not None]
+        
+        if scores:
+            avg_score = sum(scores) / len(scores)
+            max_score = max(scores)
+            min_score = min(scores)
+            distribution = {
+                'A': len([s for s in scores if s >= 0.9]),
+                'B': len([s for s in scores if 0.8 <= s < 0.9]),
+                'C': len([s for s in scores if 0.7 <= s < 0.8]),
+                'D': len([s for s in scores if 0.6 <= s < 0.7]),
+                'F': len([s for s in scores if s < 0.6]),
+            }
+        else:
+            avg_score, max_score, min_score = None, None, None
+            distribution = {}
+
+        analytics.append({
+            "coursework_id": cw.id,
+            "coursework_name": cw.name,
+            "class_average": avg_score,
+            "highest_score": max_score,
+            "lowest_score": min_score,
+            "submission_rate": f"{len(all_submissions)}/{total_students}",
+            "grade_distribution": distribution
+        })
+    return analytics
+
+def is_teacher_and_student_in_same_class(db: Session, teacher_id: int, student_id: int) -> bool:
+    """Checks if a teacher and student share at least one classroom."""
+    
+    # Find all classrooms for the teacher
+    teacher_classrooms = db.query(models.Classroom.id).filter(
+        models.Classroom.teacher_id == teacher_id
+    ).subquery()
+    
+    # Check if the student is enrolled in any of those classrooms
+    enrollment = db.query(models.Enrollment).filter(
+        models.Enrollment.student_id == student_id,
+        models.Enrollment.classroom_id.in_(teacher_classrooms)
+    ).first()
+    
+    return enrollment is not None

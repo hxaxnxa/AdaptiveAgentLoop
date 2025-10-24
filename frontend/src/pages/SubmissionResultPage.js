@@ -151,7 +151,7 @@ const SubmissionResultPage = () => {
   if (loading) return <p>Loading submission status... (This may take a moment for AI grading)</p>;
   if (!submission) return <p>Could not load submission.</p>;
 
-  const { coursework, status, score } = submission;
+  const { coursework, status } = submission;
   const isGraded = status === 'GRADED';
   const isPendingReview = status === 'PENDING_REVIEW';
 
@@ -198,16 +198,6 @@ const SubmissionResultPage = () => {
         ))}
 
       <hr />
-
-      {/* --- ADD THIS BLOCK --- */}
-      {/* Show Teacher's final feedback if it exists */}
-      {isGraded && submission.teacher_feedback && (
-        <div style={{ border: '2px solid blue', padding: '10px', margin: '15px 0', borderRadius: '5px' }}>
-          <h3>Teacher's Feedback</h3>
-          <p>{submission.teacher_feedback}</p>
-        </div>
-      )}
-      {/* --- END OF ADDITION --- */}
 
       {/* Show AI feedback only if graded */}
       {isGraded && submission.ai_feedback && <AIFeedbackDisplay feedback={submission.ai_feedback} />}

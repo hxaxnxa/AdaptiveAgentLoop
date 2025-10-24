@@ -25,6 +25,20 @@ const ClassroomDetailPage = () => {
     fetchCourseworks();
   }, [classroomId]);
 
+  const handleDeleteCoursework = async (courseworkId, courseworkName) => {
+    if (window.confirm(`Are you sure you want to delete "${courseworkName}"? This will delete all associated submissions.`)) {
+      try {
+        await apiClient.delete(`/api/coursework/${courseworkId}`);
+        alert('Coursework deleted.');
+        // Refresh the list
+        setCourseworks(prev => prev.filter(cw => cw.id !== courseworkId));
+      } catch (error) {
+        console.error("Failed to delete coursework:", error);
+        alert('Failed to delete: ' + error.response?.data?.detail);
+      }
+    }
+  };
+
   if (loading) return <p>Loading coursework...</p>;
 
   return (
@@ -53,21 +67,53 @@ const ClassroomDetailPage = () => {
             <li key={cw.id}>
               <strong>{cw.name}</strong> ({cw.coursework_type})
               
-              {/* --- FIX: Added links for teachers --- */}
               {user?.role === 'student' ? (
-                // Student Links
-                cw.coursework_type === 'quiz' ? (
-                  <Link to={`/quiz/${cw.id}/take`}>Take Quiz</Link>
+                // STUDENT: Check if submission_id exists
+                cw.submission_id ? (
+                  <Link to={`/submission/${cw.submission_id}/result`} style={{ marginLeft: '10px' }}>
+                    View Results
+                  </Link>
                 ) : (
-                  <Link to={`/assignment/${cw.id}/submit`}>Submit Assignment</Link>
+                  // No submission, show the "take" link
+                  cw.coursework_type === 'quiz' ? (
+                    <Link to={`/quiz/${cw.id}/take`} style={{ marginLeft: '10px' }}>Take Quiz</Link>
+                  ) : (
+                    <Link to={`/assignment/${cw.id}/submit`} style={{ marginLeft: '10px' }}>Submit Assignment</Link>
+                  )
                 )
               ) : (
-                // Teacher Link
-                <Link to={`/coursework/${cw.id}/review`}>Review Submissions</Link>
+                // TEACHER: Show review and delete links
+                <>
+                  <Link to={`/coursework/${cw.id}/review`} style={{ marginLeft: '10px' }}>Review Submissions</Link>
+                  <button
+                    onClick={() => handleDeleteCoursework(cw.id, cw.name)}
+                    style={{ marginLeft: '5px', color: 'red' }}
+                  >
+                    Delete
+                  </button>
+                </>
               )}
             </li>
           ))}
         </ul>
+      )}
+
+      {/* This teacher-only section for classroom-wide actions is correct */}
+      {user?.role === 'teacher' && (
+        <div className="teacher-actions" style={{margin: '10px 0', borderTop: '1px solid #ccc', paddingTop: '10px'}}>
+          <button onClick={() => navigate(`/classroom/${classroomId}/create-coursework`)}>
+            Create Coursework
+          </button>
+          <button onClick={() => navigate(`/classroom/${classroomId}/students`)} style={{marginLeft: '10px'}}>
+            Manage Students
+          </button>
+          <button onClick={() => navigate(`/classroom/${classroomId}/gradebook`)} style={{marginLeft: '10px'}}>
+            View Gradebook
+          </button>
+          <button onClick={() => navigate(`/classroom/${classroomId}/analytics`)} style={{marginLeft: '10px'}}>
+            View Analytics
+          </button>
+        </div>
       )}
     </div>
   );

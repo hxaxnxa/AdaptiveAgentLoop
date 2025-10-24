@@ -22,18 +22,29 @@ try:
         secret_key=MINIO_SECRET_KEY,
         secure=False # Set to True if using HTTPS
     )
-    
-    # Check if bucket exists
-    found = minio_client.bucket_exists(MINIO_BUCKET)
-    if not found:
-        minio_client.make_bucket(MINIO_BUCKET)
-        print(f"Bucket '{MINIO_BUCKET}' created.")
-    else:
-        print(f"Bucket '{MINIO_BUCKET}' already exists.")
 
 except S3Error as exc:
     print("Error connecting to MinIO:", exc)
     minio_client = None
+
+def check_minio_bucket():
+    """
+    Checks if the MinIO bucket exists and creates it if not.
+    This should be called during app startup, not on import.
+    """
+    if minio_client is None:
+        print("MinIO client not initialized. Cannot check bucket.")
+        return
+        
+    try:
+        found = minio_client.bucket_exists(MINIO_BUCKET)
+        if not found:
+            minio_client.make_bucket(MINIO_BUCKET)
+            print(f"Bucket '{MINIO_BUCKET}' created.")
+        else:
+            print(f"Bucket '{MINIO_BUCKET}' already exists.")
+    except Exception as e:
+        print(f"Error connecting to MinIO during bucket check: {e}")
 
 def upload_file_to_storage(file_obj, file_name: str, content_type: str) -> str:
     """

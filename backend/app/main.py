@@ -2,14 +2,19 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import timedelta
+from .core.storage import check_minio_bucket
 
 from . import models, schemas, crud, auth
 from .database import SessionLocal, engine
-from .api import classrooms, coursework # --- UPDATED ---
+from .api import classrooms, coursework, student
 
 models.Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
+
+@app.on_event("startup")
+def on_startup():
+    print("Application starting up...")
+    check_minio_bucket()
 
 origins = ["http://localhost:3000"]
 app.add_middleware(
@@ -30,7 +35,8 @@ def get_db():
 
 # --- Include the routers ---
 app.include_router(classrooms.router)
-app.include_router(coursework.router) # --- UPDATED ---
+app.include_router(coursework.router)
+app.include_router(student.router)
 
 # --- Auth Endpoints (from M3.5) ---
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)

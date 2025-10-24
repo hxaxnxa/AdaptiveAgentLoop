@@ -64,6 +64,7 @@ class OptionCreate(BaseModel):
 
 class QuestionCreate(BaseModel):
     question_text: str; question_type: str; score: int; options: List[OptionCreate]
+    concept_tags: Optional[List[str]] = None
 
 class CourseworkCreate(BaseModel):
     name: str; available_from: datetime; due_at: Optional[datetime] = None
@@ -71,7 +72,8 @@ class CourseworkCreate(BaseModel):
     questions: Optional[List[QuestionCreate]] = None
     rubric: Optional[List[RubricCriterion]] = None
     rubric_file_url: Optional[str] = None
-    material_file_urls: Optional[List[str]] = None # --- NEW ---
+    material_file_urls: Optional[List[str]] = None 
+    concept_tags: Optional[List[str]] = None
 
 class CourseworkDisplay(BaseModel):
     id: int; name: str; coursework_type: str; available_from: datetime
@@ -174,3 +176,16 @@ class QuizGenerationResponse(BaseModel):
 class SubmissionApproval(BaseModel):
     teacher_override_score: Optional[float] = None # Score between 0.0 and 1.0
     teacher_feedback: Optional[str] = None
+
+class DSKGNode(BaseModel):
+    concept: str
+    score: float
+    last_assessed: datetime
+
+class DSKGProfileResponse(BaseModel):
+    student: UserDisplay  # The student's public info
+    dskg: List[DSKGNode]  # Their knowledge graph
+
+class CourseworkForStudentList(CourseworkDisplay):
+    submission_id: Optional[int] = None
+

@@ -42,6 +42,7 @@ class Coursework(Base):
     available_from = Column(DateTime(timezone=True), server_default=func.now())
     due_at = Column(DateTime(timezone=True), nullable=True)
     coursework_type = Column(String, nullable=False) # quiz, assignment, case_study, essay
+    concept_tags = Column(MutableList.as_mutable(JSON), nullable=True, default=[])
     
     # --- UPDATED: Rubric can be a file or embedded JSON ---
     rubric = Column(JSON, nullable=True) 
@@ -66,6 +67,7 @@ class Question(Base):
     coursework = relationship("Coursework", back_populates="questions")
     options = relationship("Option", back_populates="question", cascade="all, delete-orphan")
     submission_answers = relationship("SubmissionAnswer", back_populates="question")
+    concept_tags = Column(MutableList.as_mutable(JSON), nullable=True, default=[])
 
 # --- Option (No Change) ---
 class Option(Base):
@@ -120,3 +122,33 @@ class SubmissionAnswer(Base):
     # --- UPDATED: To support 'multiple_response' ---
     # For single-choice, this will be a list with one item
     selected_option_ids = Column(JSON, nullable=True)
+
+class RemedialQuiz(Base):
+    __tablename__ = "remedial_quizzes"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"))
+    concept = Column(String, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_completed = Column(Boolean, default=False)
+    
+    student = relationship("User")
+    questions = relationship("RemedialQuestion", cascade="all, delete-orphan")
+
+class RemedialQuestion(Base):
+    __tablename__ = "remedial_questions"
+    id = Column(Integer, primary_key=True, index=True)
+    quiz_id = Column(Integer, ForeignKey("remedial_quizzes.id"))
+    question_text = Column(Text, nullable=False)
+    question_type = Column(String, default="multiple_choice", nullable=False)
+    
+    quiz = relationship("RemedialQuiz", back_populates="questions")
+    options = relationship("RemedialOption", cascade="all, delete-orphan")
+
+class RemedialOption(Base):
+    __tablename__ = "remedial_options"
+    id = Column(Integer, primary_key=True, index=True)
+    question_id = Column(Integer, ForeignKey("remedial_questions.id"))
+    option_text = Column(Text, nullable=False)
+    is_correct = Column(Boolean, default=False, nullable=False)
+    
+    question = relationship("RemedialQuestion", back_populates="options")

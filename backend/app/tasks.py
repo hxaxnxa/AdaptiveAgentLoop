@@ -5,7 +5,8 @@ from .agents.evaluation_chain import evaluation_graph, get_text_from_url
 import logging
 import json
 from .agents.quiz_grader import grade_quiz
-
+from .agents.dskg_agent import update_dskg_from_submission
+from .agents.planner_agent import run_planner
 logger = logging.getLogger(__name__)
 
 # --- Task 1: Quiz Grader (No change in task logic) ---
@@ -119,5 +120,39 @@ def regrade_quiz_submissions_for_question(question_id: int):
             
     except Exception as e:
         logger.error(f"Error during regrade trigger for Q{question_id}: {e}", exc_info=True)
+    finally:
+        db.close()
+
+@celery_app.task
+def run_dskg_update(submission_id: int):
+    logger.info(f"--- Task: Starting DSKG Update for {submission_id} ---")
+    db = SessionLocal()
+    try:
+        submission = crud.get_submission_detail(db, submission_id)
+        if not submission:
+            logger.error(f"DSKG update failed: No submission {submission_id}")
+            return
+            
+        update_dskg_from_submission(db, submission_id)
+        
+        # --- CHAIN THE NEXT TASK ---
+        # After updating memory, run the planner
+        task_run_planner.delay(submission.student_id)
+        
+    except Exception as e:
+        logger.error(f"Error in DSKG update task: {e}", exc_info=True)
+    finally:
+        db.close()
+
+@celery_app.task
+def task_run_planner(student_id: int):
+    """Celery task wrapper for the planner agent."""
+    logger.info(f"--- Task: Starting Planner for Student {student_id} ---")
+    db = SessionLocal()
+    try:
+        # Call the *actual* planner function from planner_agent.py
+        run_planner(db, student_id)
+    except Exception as e:
+        logger.error(f"Error in planner task: {e}", exc_info=True)
     finally:
         db.close()

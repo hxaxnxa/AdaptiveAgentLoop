@@ -3,37 +3,57 @@ import { useParams, useNavigate } from 'react-router-dom';
 import apiClient from '../api/apiClient';
 
 const EssaySubmitPage = () => {
-  const { courseworkId } = useParams(); // --- RENAMED ---
+  const { courseworkId } = useParams();
   const navigate = useNavigate();
-  const [coursework, setCoursework] = useState(null); // --- ADDED ---
-  const [content, setContent] = useState('');
+  const [coursework, setCoursework] = useState(null);
+  const [file, setFile] = useState(null); // For file upload
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null); // --- ADDED ---
+  const [error, setError] = useState(null);
 
-  // --- ADDED: Fetch coursework to show rubric ---
   useEffect(() => {
     const fetchCoursework = async () => {
       try {
         const response = await apiClient.get(`/api/coursework/${courseworkId}`);
         setCoursework(response.data);
       } catch (error) {
-        console.error("Failed to fetch coursework:", error);
-        setError(error.response?.data?.detail || "Failed to load coursework.");
+        const detail = error.response?.data?.detail;
+        if (error.response?.status === 409) {
+          const subId = error.response.headers['x-submission-id'];
+          alert(detail + " Redirecting to your result.");
+          navigate(`/submission/${subId}/result`);
+        } else {
+          setError(detail || "Failed to load coursework.");
+        }
       } finally {
         setLoading(false);
       }
     };
     fetchCoursework();
-  }, [courseworkId]);
+  }, [courseworkId, navigate]);
+
+  const handleFileChange = (e) => {
+    setFile(e.target.files[0]);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!file) {
+      alert("Please select a file to upload.");
+      return;
+    }
     setLoading(true);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
     try {
-      const payload = { submission_text: content }; // --- RENAMED ---
-      // --- RENAMED API ---
-      const response = await apiClient.post(`/api/coursework/${courseworkId}/submit-essay`, payload);
-      alert('Submission successful! Your assignment is now being graded by the AI.');
+      const response = await apiClient.post(
+        `/api/coursework/${courseworkId}/submit-file`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+
+      alert('Submission successful! Your assignment is being graded.');
       navigate(`/submission/${response.data.id}/result`);
     } catch (error) {
       console.error("Failed to submit essay:", error);
@@ -41,37 +61,41 @@ const EssaySubmitPage = () => {
       setLoading(false);
     }
   };
-  
+
   if (loading) return <p>Loading...</p>;
-  if (error) return <p style={{color: 'red'}}>Error: {error}</p>;
+  if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
   if (!coursework) return <p>Coursework not found.</p>;
 
   return (
     <div>
       <h2>{coursework.name}</h2>
-      
-      {/* --- ADDED: Display Rubric --- */}
+
       <h3>Grading Rubric</h3>
-      <ul>
-        {coursework.rubric.map((r, i) => (
-          <li key={i}>{r.criterion} ({r.max_points} points)</li>
-        ))}
-      </ul>
-      
+      {coursework.rubric_file_url ? (
+        <a href={coursework.rubric_file_url} target="_blank" rel="noopener noreferrer">
+          View Rubric Document
+        </a>
+      ) : (
+        <ul>
+          {coursework.rubric?.map((r, i) => (
+            <li key={i}>{r.criterion} ({r.max_points} pts)</li>
+          ))}
+        </ul>
+      )}
+
       <hr />
-      
+
       <form onSubmit={handleSubmit}>
         <div>
-          <label>Your Submission:</label>
-          <textarea
-            rows="20" cols="80"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
+          <label>Upload your submission (.pdf, .docx, .txt):</label>
+          <input
+            type="file"
+            accept=".pdf,.docx,.doc,.txt"
+            onChange={handleFileChange}
             required
-            placeholder="Type or paste your submission here..."
           />
         </div>
-        <button type="submit" disabled={loading}>
+        <button type="submit" disabled={loading || !file}>
           {loading ? "Submitting..." : "Submit for Grading"}
         </button>
       </form>

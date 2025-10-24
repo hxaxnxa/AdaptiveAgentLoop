@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session, joinedload
 from . import models, schemas, auth
+from datetime import datetime, timezone
 
 # --- User Functions (from M3.5) ---
 def get_user_by_email(db: Session, email: str):
@@ -58,30 +59,28 @@ def remove_student_from_classroom(db: Session, student_id: int, classroom_id: in
 # --- RENAMED: Coursework & Submission Functions ---
 
 def create_coursework(db: Session, coursework: schemas.CourseworkCreate, classroom_id: int):
-    # --- UPDATED to new schema ---
     rubric_data = [r.dict() for r in coursework.rubric] if coursework.rubric else None
     
     db_coursework = models.Coursework(
         name=coursework.name,
-        available_from=coursework.available_from, # --- ADDED ---
+        available_from=coursework.available_from,
         due_at=coursework.due_at,
-        coursework_type=coursework.coursework_type, # --- ADDED ---
-        rubric=rubric_data, # --- ADDED ---
+        coursework_type=coursework.coursework_type,
+        rubric=rubric_data,
+        rubric_file_url=coursework.rubric_file_url,
+        material_file_urls=coursework.material_file_urls, # --- NEW ---
         classroom_id=classroom_id
     )
-    db.add(db_coursework)
-    db.commit()
-    db.refresh(db_coursework)
+    db.add(db_coursework); db.commit(); db.refresh(db_coursework)
     
-    # --- UPDATED: Safe iteration ---
     for question_in in coursework.questions or []:
         db_question = models.Question(
             question_text=question_in.question_text,
-            coursework_id=db_coursework.id # --- UPDATED ---
+            question_type=question_in.question_type,
+            score=question_in.score,
+            coursework_id=db_coursework.id
         )
-        db.add(db_question)
-        db.commit()
-        db.refresh(db_question)
+        db.add(db_question); db.commit(); db.refresh(db_question)
         
         for option_in in question_in.options:
             db_option = models.Option(
@@ -91,19 +90,25 @@ def create_coursework(db: Session, coursework: schemas.CourseworkCreate, classro
             )
             db.add(db_option)
             
-    db.commit()
-    db.refresh(db_coursework)
+    db.commit(); db.refresh(db_coursework)
     return db_coursework
 
 def get_courseworks_for_classroom(db: Session, classroom_id: int):
-    return db.query(models.Coursework).filter(
-        models.Coursework.classroom_id == classroom_id
-    ).all()
+    now = datetime.now(timezone.utc)
+    query = db.query(models.Coursework).filter(models.Coursework.classroom_id == classroom_id)
+    # If adding student context: query = query.filter(models.Coursework.available_from <= now)
+    return query.order_by(models.Coursework.available_from).all()
 
-def get_coursework(db: Session, coursework_id: int):
-    return db.query(models.Coursework).get(coursework_id)
+def get_coursework_with_details(db: Session, coursework_id: int): # --- RENAMED ---
+    return db.query(models.Coursework).filter(models.Coursework.id == coursework_id).options(
+        joinedload(models.Coursework.questions).joinedload(models.Question.options)
+    ).first()
 
-# --- NEW: Check for single attempt (Req #2) ---
+def get_question_with_options(db: Session, question_id: int): # --- NEW ---
+    return db.query(models.Question).filter(models.Question.id == question_id).options(
+        joinedload(models.Question.options)
+    ).first()
+
 def get_submission_by_student_and_coursework(db: Session, student_id: int, coursework_id: int):
     return db.query(models.Submission).filter(
         models.Submission.student_id == student_id,
@@ -114,7 +119,7 @@ def create_quiz_submission(db: Session, submission: schemas.QuizSubmissionCreate
     db_submission = models.Submission(
         coursework_id=coursework_id,
         student_id=student_id,
-        status="SUBMITTED" # Graded immediately by task
+        status="SUBMITTED"
     )
     db.add(db_submission)
     db.commit()
@@ -124,7 +129,7 @@ def create_quiz_submission(db: Session, submission: schemas.QuizSubmissionCreate
         db_answer = models.SubmissionAnswer(
             submission_id=db_submission.id,
             question_id=answer_in.question_id,
-            selected_option_id=answer_in.selected_option_id
+            selected_option_ids=answer_in.selected_option_ids # --- UPDATED ---
         )
         db.add(db_answer)
         
@@ -136,25 +141,53 @@ def create_essay_submission(db: Session, submission: schemas.EssaySubmissionCrea
     db_submission = models.Submission(
         coursework_id=coursework_id,
         student_id=student_id,
-        submission_text=submission.submission_text, # --- RENAMED ---
-        status="SUBMITTED" # Will be picked up by AI task
+        submission_text=submission.submission_text,
+        submission_file_url=submission.submission_file_url,
+        status="SUBMITTED"
     )
     db.add(db_submission)
     db.commit()
     db.refresh(db_submission)
     return db_submission
 
-def get_submission_detail(db: Session, submission_id: int, student_id: int):
-    # --- UPDATED for Req #4 ---
-    # Eagerly load all the nested data we need for the UI
+def get_submission_detail(db: Session, submission_id: int):
+    # --- UPDATED: To handle new quiz answer model ---
     return db.query(models.Submission).filter(
-        models.Submission.id == submission_id,
-        models.Submission.student_id == student_id
+        models.Submission.id == submission_id
     ).options(
         joinedload(models.Submission.coursework),
+        joinedload(models.Submission.student), # --- ADDED ---
         joinedload(models.Submission.answers)
             .joinedload(models.SubmissionAnswer.question)
-            .joinedload(models.Question.options),
-        joinedload(models.Submission.answers)
-            .joinedload(models.SubmissionAnswer.selected_option)
+            .joinedload(models.Question.options)
     ).first()
+
+def get_submissions_for_coursework(db: Session, coursework_id: int):
+    """NEW: For the teacher's review list"""
+    return db.query(models.Submission).filter(
+        models.Submission.coursework_id == coursework_id
+    ).options(
+        joinedload(models.Submission.student) # Include student info
+    ).order_by(models.Submission.submitted_at).all()
+
+# --- NEW: Functions for Regrading and Approval (Req #2, #3) ---
+
+def update_option_correctness(db: Session, option_id: int, is_correct: bool):
+    """Updates a single option's correct status."""
+    db.query(models.Option).filter(models.Option.id == option_id).update({"is_correct": is_correct})
+    db.commit()
+
+def get_submissions_for_question(db: Session, question_id: int):
+    """Finds all submissions that answered a specific question."""
+    return db.query(models.Submission).join(models.SubmissionAnswer).filter(
+        models.SubmissionAnswer.question_id == question_id
+    ).all()
+
+def approve_submission(db: Session, submission_id: int, approval_data: schemas.SubmissionApproval):
+    """Applies teacher overrides and sets status to GRADED."""
+    db.query(models.Submission).filter(models.Submission.id == submission_id).update({
+        "teacher_override_score": approval_data.teacher_override_score,
+        "teacher_feedback": approval_data.teacher_feedback,
+        "status": "GRADED"
+    })
+    db.commit()

@@ -12,10 +12,12 @@ import Navbar from './components/Navbar';
 import './App.css';
 
 // --- RENAMED IMPORTS ---
+import CourseworkReviewPage from './pages/CourseworkReviewPage';
 import CreateCourseworkPage from './pages/CreateCourseworkPage';
 import QuizTakePage from './pages/QuizTakePage';
 import EssaySubmitPage from './pages/EssaySubmitPage';
 import SubmissionResultPage from './pages/SubmissionResultPage';
+import SubmissionReviewPage from './pages/SubmissionReviewPage';
 
 const PrivateRoute = ({ children }) => {
   const { token } = useAuth();
@@ -48,9 +50,14 @@ function App() {
             path="/quiz/:courseworkId/take" 
             element={<PrivateRoute><QuizTakePage /></PrivateRoute>} 
           />
+          <Route path="/coursework/:courseworkId/review" element={<PrivateRoute><CourseworkReviewPage /></PrivateRoute>} />
           <Route 
             path="/assignment/:courseworkId/submit" 
             element={<PrivateRoute><EssaySubmitPage /></PrivateRoute>} 
+          />
+          <Route 
+            path="/submission/:submissionId/review" 
+            element={<PrivateRoute><SubmissionReviewPage /></PrivateRoute>} 
           />
           <Route 
             path="/submission/:submissionId/result" 

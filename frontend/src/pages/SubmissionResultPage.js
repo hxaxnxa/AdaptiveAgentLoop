@@ -2,34 +2,49 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import apiClient from '../api/apiClient';
 
-// --- NEW: Helper Components ---
-
-// Shows the student's quiz answers (Req #4)
+// --- Quiz Result Component ---
 const QuizResultDetail = ({ submission }) => {
   return (
     <div>
       <h3>Your Answers:</h3>
       {submission.answers.map((answer, index) => {
-        const selectedId = answer.selected_option.id;
-        const correctOption = answer.question.options.find(opt => opt.is_correct);
-        const isCorrect = correctOption.id === selectedId;
-        
+        const selectedIds = new Set(answer.selected_option_ids);
+        const correctIds = new Set(
+          answer.question.options.filter(opt => opt.is_correct).map(opt => opt.id)
+        );
+
+        // Correct if selected matches exactly the correct options
+        const isQCorrect =
+          selectedIds.size === correctIds.size &&
+          [...selectedIds].every(id => correctIds.has(id));
+
         return (
-          <div key={answer.id} style={{border: '1px solid #ddd', padding: '10px', margin: '10px 0'}}>
-            <strong>Q{index+1}: {answer.question.question_text}</strong>
-            <ul style={{listStyle: 'none'}}>
+          <div
+            key={answer.id}
+            style={{
+              border: `2px solid ${isQCorrect ? 'green' : 'red'}`,
+              padding: '10px',
+              margin: '10px 0',
+              borderRadius: '5px',
+            }}
+          >
+            <strong>
+              Q{index + 1}: {answer.question.question_text}
+            </strong>
+            <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
               {answer.question.options.map(opt => {
+                const isSelected = selectedIds.has(opt.id);
+                const isCorrect = correctIds.has(opt.id);
                 let style = {};
-                if (opt.id === selectedId && !isCorrect) {
-                  style = {color: 'red', fontWeight: 'bold'}; // Incorrectly chosen
-                } else if (opt.is_correct) {
-                  style = {color: 'green', fontWeight: 'bold'}; // The correct answer
-                }
-                
+
+                if (isSelected && isCorrect) style = { color: 'green', fontWeight: 'bold' };
+                if (isSelected && !isCorrect) style = { color: 'red', fontWeight: 'bold' };
+                if (!isSelected && isCorrect) style = { color: 'orange', fontWeight: 'bold' };
+
                 return (
                   <li key={opt.id} style={style}>
-                    {opt.id === selectedId ? `(Your Answer) ` : ''}
-                    {opt.is_correct ? `(Correct) ` : ''}
+                    {isSelected ? '[Your Answer] ' : ''}
+                    {isCorrect ? '[Correct] ' : ''}
                     {opt.option_text}
                   </li>
                 );
@@ -42,46 +57,61 @@ const QuizResultDetail = ({ submission }) => {
   );
 };
 
-// Shows the student's essay (Req #4)
-const EssayResultDetail = ({ submission }) => {
-  return (
-    <div>
-      <h3>Your Submission:</h3>
-      <pre style={{backgroundColor: '#f4f4f4', padding: '10px', whiteSpace: 'pre-wrap'}}>
-        {submission.submission_text}
-      </pre>
-    </div>
-  );
-};
+// --- Essay Result Component ---
+const EssayResultDetail = ({ submission }) => (
+  <div>
+    <h3>Your Submission:</h3>
+    {submission.submission_file_url && (
+      <p>
+        <a  // <--- HERE IS THE DOWNLOAD LINK
+          href={submission.submission_file_url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Download Your Submitted File
+        </a>
+      </p>
+    )}
+    {/*
+    <h4>Extracted Text:</h4>
+    <pre
+      style={{
+        backgroundColor: '#f4f4f4',
+        padding: '10px',
+        whiteSpace: 'pre-wrap',
+      }}
+    >
+      {submission.submission_text || 'No text extracted or text-only submission.'}
+    </pre> */}
+  </div>
+);
 
-// Shows the AI's rubric-based feedback
-const AIFeedbackDisplay = ({ feedback }) => {
-  return (
-    <div>
-      <h3>AI Feedback Breakdown:</h3>
-      <table style={{width: '100%', borderCollapse: 'collapse'}}>
-        <thead>
-          <tr style={{backgroundColor: '#eee'}}>
-            <th style={{border: '1px solid #ddd', padding: '8px'}}>Criterion</th>
-            <th style={{border: '1px solid #ddd', padding: '8px'}}>Score</th>
-            <th style={{border: '1px solid #ddd', padding: '8px'}}>Justification</th>
+// --- AI Feedback Component ---
+const AIFeedbackDisplay = ({ feedback }) => (
+  <div>
+    <h3>AI Feedback Breakdown:</h3>
+    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <thead>
+        <tr style={{ backgroundColor: '#eee' }}>
+          <th style={{ border: '1px solid #ddd', padding: '8px' }}>Criterion</th>
+          <th style={{ border: '1px solid #ddd', padding: '8px' }}>Score</th>
+          <th style={{ border: '1px solid #ddd', padding: '8px' }}>Justification</th>
+        </tr>
+      </thead>
+      <tbody>
+        {feedback.map((item, index) => (
+          <tr key={index}>
+            <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.criterion}</td>
+            <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.score}</td>
+            <td style={{ border: '1px solid #ddd', padding: '8px' }}>{item.justification}</td>
           </tr>
-        </thead>
-        <tbody>
-          {feedback.map((item, index) => (
-            <tr key={index}>
-              <td style={{border: '1px solid #ddd', padding: '8px'}}>{item.criterion}</td>
-              <td style={{border: '1px solid #ddd', padding: '8px'}}>{item.score}</td>
-              <td style={{border: '1px solid #ddd', padding: '8px'}}>{item.justification}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
 
-// --- Main Page Component ---
+// --- Main Submission Result Page ---
 const SubmissionResultPage = () => {
   const { submissionId } = useParams();
   const [submission, setSubmission] = useState(null);
@@ -90,32 +120,30 @@ const SubmissionResultPage = () => {
   useEffect(() => {
     const fetchResult = async () => {
       try {
-        const response = await apiClient.get(`/api/coursework/submissions/${submissionId}/result`);
+        const response = await apiClient.get(
+          `/api/coursework/submissions/${submissionId}/result`
+        );
         setSubmission(response.data);
-        
+
         // Stop polling if grading is done or errored
-        if (response.data.status !== 'SUBMITTED' && response.data.status !== 'GRADING') {
+        if (!['SUBMITTED', 'GRADING'].includes(response.data.status)) {
           setLoading(false);
-          return true; // Stop
+          return true; // stop polling
         }
       } catch (error) {
-        console.error("Failed to fetch result:", error);
+        console.error('Failed to fetch result:', error);
         setLoading(false);
-        return true; // Stop
+        return true;
       }
-      return false; // Keep polling
+      return false; // keep polling
     };
 
-    // Initial fetch
     fetchResult();
-    
-    // Poll for results
+
     const pollInterval = setInterval(async () => {
       const stopped = await fetchResult();
-      if (stopped) {
-        clearInterval(pollInterval);
-      }
-    }, 3000); // Check every 3 seconds
+      if (stopped) clearInterval(pollInterval);
+    }, 3000);
 
     return () => clearInterval(pollInterval);
   }, [submissionId]);
@@ -124,44 +152,66 @@ const SubmissionResultPage = () => {
   if (!submission) return <p>Could not load submission.</p>;
 
   const { coursework, status, score } = submission;
-  const isGraded = status === 'PENDING_REVIEW' || status === 'GRADED';
+  const isGraded = status === 'GRADED';
+  const isPendingReview = status === 'PENDING_REVIEW';
 
   return (
     <div>
       <h2>Results for: {coursework.name}</h2>
-      
+
       <p>
         <strong>Status:</strong> {status}
       </p>
-      
+
       {isGraded && (
-        <h3>
-          Score: {Math.round(score * 100)}%
-          {status === 'PENDING_REVIEW' && ' (Pending Teacher Review)'}
-        </h3>
+        <>
+          <h3>
+            {/* --- FIX #1: Use final_score --- */}
+            Score: {Math.round(submission.final_score * 100)}%
+          </h3>
+
+          {/* --- FIX #2: Add Teacher Feedback --- */}
+          {submission.teacher_feedback && (
+            <div style={{border: '1px solid blue', padding: '10px', margin: '10px 0'}}>
+              <strong>Teacher Feedback:</strong>
+              <p>{submission.teacher_feedback}</p>
+            </div>
+          )}
+        </>
       )}
-      
+
+      {isPendingReview && (
+        <h3>Score: (Graded by AI, awaiting teacher review)</h3>
+      )}
       <p>
         <strong>Submitted at:</strong> {new Date(submission.submitted_at).toLocaleString()}
       </p>
-      
-      <hr />
-      
-      {/* --- Req #4: Show the student's work --- */}
-      {coursework.coursework_type === 'quiz' && submission.answers && (
-        <QuizResultDetail submission={submission} />
-      )}
-      {coursework.coursework_type !== 'quiz' && submission.submission_text && (
-        <EssayResultDetail submission={submission} />
-      )}
-      
+
       <hr />
 
-      {/* --- Req #4: Show the AI feedback --- */}
-      {isGraded && submission.ai_feedback && (
-        <AIFeedbackDisplay feedback={submission.ai_feedback} />
+      {/* Show student's answers only if graded or pending review */}
+      {(isGraded || isPendingReview) &&
+        (coursework.coursework_type === 'quiz' && submission.answers ? (
+          <QuizResultDetail submission={submission} />
+        ) : (
+          <EssayResultDetail submission={submission} />
+        ))}
+
+      <hr />
+
+      {/* --- ADD THIS BLOCK --- */}
+      {/* Show Teacher's final feedback if it exists */}
+      {isGraded && submission.teacher_feedback && (
+        <div style={{ border: '2px solid blue', padding: '10px', margin: '15px 0', borderRadius: '5px' }}>
+          <h3>Teacher's Feedback</h3>
+          <p>{submission.teacher_feedback}</p>
+        </div>
       )}
-      
+      {/* --- END OF ADDITION --- */}
+
+      {/* Show AI feedback only if graded */}
+      {isGraded && submission.ai_feedback && <AIFeedbackDisplay feedback={submission.ai_feedback} />}
+
       <Link to={`/classroom/${coursework.classroom_id}`}>Back to Classroom</Link>
     </div>
   );

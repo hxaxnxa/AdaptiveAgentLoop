@@ -53,13 +53,17 @@ const ClassroomDetailPage = () => {
             <li key={cw.id}>
               <strong>{cw.name}</strong> ({cw.coursework_type})
               
-              {/* --- UPDATED LINK LOGIC --- */}
-              {user?.role === 'student' && (
+              {/* --- FIX: Added links for teachers --- */}
+              {user?.role === 'student' ? (
+                // Student Links
                 cw.coursework_type === 'quiz' ? (
                   <Link to={`/quiz/${cw.id}/take`}>Take Quiz</Link>
                 ) : (
                   <Link to={`/assignment/${cw.id}/submit`}>Submit Assignment</Link>
                 )
+              ) : (
+                // Teacher Link
+                <Link to={`/coursework/${cw.id}/review`}>Review Submissions</Link>
               )}
             </li>
           ))}
